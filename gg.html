@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Galactic Guardian</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #050505 100%);
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: white;
+            padding: 20px;
+        }
+        .controls-container {
+            pointer-events: auto;
+            position: relative;
+            width: 100%;
+            height: 120px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            active:scale-90;
+            transition: transform 0.1s, background 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-shoot {
+            width: 85px;
+            height: 85px;
+            background: rgba(239, 68, 68, 0.4);
+            border-color: rgba(239, 68, 68, 0.6);
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        .hidden { display: none; }
+        
+        .scanlines {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        #powerup-timer {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(251, 191, 36, 0.2);
+            border: 1px solid rgba(251, 191, 36, 0.5);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #fbbf24;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen" class="overlay">
+        <h1 class="text-5xl font-black text-blue-500 mb-4 tracking-tighter">GALACTIC<br>GUARDIAN</h1>
+        <p class="text-gray-400 mb-8 px-6 uppercase text-xs tracking-widest">Repair Kits Initialized</p>
+        <button id="start-btn" class="px-10 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-xl transition-all active:scale-90 shadow-lg shadow-blue-900/40">ENGAGE</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 class="text-4xl font-black text-red-500 mb-2">MISSION TERMINATED</h1>
+        <p id="final-score" class="text-2xl text-white mb-8 font-mono">Score: 0</p>
+        <button id="restart-btn" class="px-10 py-4 bg-red-600 hover:bg-red-500 text-white rounded-full font-bold text-xl transition-all active:scale-90 shadow-lg shadow-red-900/40">REBOOT</button>
+    </div>
+
+    <div class="ui-layer">
+        <div class="flex justify-between items-start">
+            <div>
+                <p class="text-[10px] text-blue-400 uppercase font-black tracking-widest">Score</p>
+                <p id="score-val" class="text-3xl font-mono font-bold">0000</p>
+            </div>
+            
+            <div id="boss-health-bar" class="hidden flex-1 px-8 pt-2">
+                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden border border-red-900/50">
+                    <div id="boss-fill" class="h-full bg-red-500 transition-all duration-200" style="width: 100%"></div>
+                </div>
+                <p id="boss-name" class="text-[8px] text-center text-red-500 font-bold uppercase mt-1 tracking-widest">Boss Signature</p>
+            </div>
+
+            <div class="text-right">
+                <p class="text-[10px] text-blue-400 uppercase font-black tracking-widest">Hull</p>
+                <div id="lives-container" class="flex gap-1 justify-end mt-1"></div>
+            </div>
+        </div>
+
+        <div id="powerup-timer" class="hidden">Shotgun Active: 5.0s</div>
+
+        <div class="controls-container">
+            <div class="absolute left-0 bottom-0 flex gap-3">
+                <div id="ctrl-left" class="btn">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </div>
+                <div id="ctrl-right" class="btn">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-7 7 7-7-7-7"/></svg>
+                </div>
+            </div>
+            
+            <div class="absolute right-[10%] bottom-0">
+                <div id="ctrl-shoot" class="btn btn-shoot">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z"/></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="scanlines"></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-val');
+        const livesContainer = document.getElementById('lives-container');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreEl = document.getElementById('final-score');
+        const bossHealthUI = document.getElementById('boss-health-bar');
+        const bossFillUI = document.getElementById('boss-fill');
+        const bossNameUI = document.getElementById('boss-name');
+        const powerupUI = document.getElementById('powerup-timer');
+
+        let GAME_WIDTH, GAME_HEIGHT, scale = 1;
+        let gameState = 'MENU';
+        let score = 0, lives = 3, level = 1;
+        let player, invaders, bullets, invaderBullets, particles = [], powerups = [], boss = null;
+        let invaderDirection = 1, invaderMoveTimer = 0;
+        const keys = {};
+        const touch = { left: false, right: false, shoot: false };
+
+        function resize() {
+            GAME_WIDTH = window.innerWidth;
+            GAME_HEIGHT = window.innerHeight;
+            canvas.width = GAME_WIDTH;
+            canvas.height = GAME_HEIGHT;
+            scale = Math.min(GAME_WIDTH / 400, 1.5);
+            if (player) {
+                player.y = GAME_HEIGHT - 160;
+                player.clamp();
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Player {
+            constructor() {
+                this.width = 44 * scale;
+                this.height = 34 * scale;
+                this.x = GAME_WIDTH / 2 - this.width / 2;
+                this.y = GAME_HEIGHT - 160;
+                this.speed = 7 * scale;
+                this.cooldown = 0;
+                this.powerupTimer = 0;
+                this.invulnerable = 0;
+            }
+            draw() {
+                if (this.invulnerable > 0 && Math.floor(Date.now()/100) % 2 === 0) return;
+                ctx.save();
+                ctx.translate(this.x + this.width/2, this.y + this.height/2);
+                ctx.fillStyle = this.powerupTimer > 0 ? '#fbbf24' : '#3b82f6';
+                ctx.shadowBlur = this.powerupTimer > 0 ? 25 : 15;
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.beginPath();
+                ctx.moveTo(0, -this.height/2);
+                ctx.lineTo(this.width/2, this.height/2);
+                ctx.lineTo(-this.width/2, this.height/2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+            update() {
+                if (keys['ArrowLeft'] || touch.left) this.x -= this.speed;
+                if (keys['ArrowRight'] || touch.right) this.x += this.speed;
+                this.clamp();
+                if (this.cooldown > 0) this.cooldown--;
+                if (this.invulnerable > 0) this.invulnerable -= 16.67;
+                if (this.powerupTimer > 0) {
+                    this.powerupTimer -= 16.67;
+                    if (this.powerupTimer <= 0) {
+                        this.powerupTimer = 0;
+                        powerupUI.classList.add('hidden');
+                    } else {
+                        powerupUI.classList.remove('hidden');
+                        powerupUI.textContent = `Shotgun Active: ${(this.powerupTimer/1000).toFixed(1)}s`;
+                    }
+                }
+                if ((keys[' '] || touch.shoot) && this.cooldown === 0) this.shoot();
+            }
+            clamp() {
+                const margin = 15;
+                if (this.x < margin) this.x = margin;
+                if (this.x > GAME_WIDTH - this.width - margin) this.x = GAME_WIDTH - this.width - margin;
+            }
+            shoot() {
+                const color = this.powerupTimer > 0 ? '#fbbf24' : '#60a5fa';
+                if (this.powerupTimer > 0) {
+                    bullets.push(new Bullet(this.x + this.width / 2, this.y, -1.8, -8, color));
+                    bullets.push(new Bullet(this.x + this.width / 2, this.y, 0, -8, color));
+                    bullets.push(new Bullet(this.x + this.width / 2, this.y, 1.8, -8, color));
+                    this.cooldown = 15;
+                } else {
+                    bullets.push(new Bullet(this.x + this.width / 2, this.y, 0, -8, color));
+                    this.cooldown = 12;
+                }
+                createExplosion(this.x + this.width/2, this.y, color, 3);
+            }
+        }
+
+        class Invader {
+            constructor(x, y, type) {
+                this.x = x; this.y = y;
+                this.width = 28 * scale;
+                this.height = 24 * scale;
+                this.type = type;
+                const colors = ['#f87171', '#fbbf24', '#34d399'];
+                this.color = colors[type - 1];
+                this.alive = true;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x + this.width*0.1, this.y + this.height*0.2, this.width*0.8, this.height*0.6);
+                ctx.fillRect(this.x + this.width*0.3, this.y, this.width*0.4, this.height*0.2);
+            }
+        }
+
+        class BehemothBoss {
+            constructor() {
+                this.type = "BEHEMOTH";
+                this.width = 130 * scale;
+                this.height = 90 * scale;
+                this.x = GAME_WIDTH / 2 - this.width / 2;
+                this.y = -200;
+                this.targetY = 100;
+                this.hp = 20;
+                this.maxHp = 20;
+                this.speed = 2.5 * scale;
+                this.dir = 1;
+                this.shootTimer = 0;
+                this.color = '#ef4444';
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x + this.width/2, this.y + this.height/2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 30; ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.moveTo(-this.width/2, -this.height/4);
+                ctx.lineTo(-this.width/4, -this.height/2);
+                ctx.lineTo(this.width/4, -this.height/2);
+                ctx.lineTo(this.width/2, -this.height/4);
+                ctx.lineTo(this.width/2, this.height/4);
+                ctx.lineTo(0, this.height/2);
+                ctx.lineTo(-this.width/2, this.height/4);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+            update() {
+                if (this.y < this.targetY) { this.y += 2; return; }
+                this.x += this.speed * this.dir;
+                if (this.x > GAME_WIDTH - this.width - 20 || this.x < 20) this.dir *= -1;
+                this.shootTimer++;
+                if (this.shootTimer > 70) {
+                    this.shootTimer = 0;
+                    const bSpeed = 6;
+                    invaderBullets.push(new Bullet(this.x + this.width/2, this.y + this.height, -1.8, bSpeed, this.color));
+                    invaderBullets.push(new Bullet(this.x + this.width/2, this.y + this.height, 0, bSpeed, this.color));
+                    invaderBullets.push(new Bullet(this.x + this.width/2, this.y + this.height, 1.8, bSpeed, this.color));
+                }
+            }
+        }
+
+        class LevinTitanBoss {
+            constructor() {
+                this.type = "LEVIN";
+                this.width = 150 * scale;
+                this.height = 70 * scale;
+                this.x = GAME_WIDTH / 2 - this.width / 2;
+                this.y = -200;
+                this.targetY = 80;
+                this.hp = 20;
+                this.maxHp = 20;
+                this.speed = 3 * scale;
+                this.dir = 1;
+                this.state = 'IDLE';
+                this.stateTimer = 0;
+                this.color = '#818cf8';
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x + this.width/2, this.y + this.height/2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 30; ctx.shadowColor = this.color;
+                ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+                ctx.fillStyle = 'white';
+                ctx.beginPath(); ctx.arc(0, 0, 15 * scale, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+
+                if (this.state === 'WINDUP') {
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                    const lWidth = GAME_WIDTH / 3;
+                    const lx = this.x + this.width/2 - lWidth/2;
+                    if (Math.floor(Date.now()/50) % 2 === 0) ctx.fillRect(lx, this.y + this.height, lWidth, GAME_HEIGHT);
+                    ctx.restore();
+                } else if (this.state === 'FIRING') {
+                    ctx.save();
+                    const lWidth = GAME_WIDTH / 3;
+                    const lx = this.x + this.width/2 - lWidth/2;
+                    const grad = ctx.createLinearGradient(lx, 0, lx + lWidth, 0);
+                    grad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+                    grad.addColorStop(0.5, 'white');
+                    grad.addColorStop(1, 'rgba(255, 255, 255, 0.2)');
+                    ctx.fillStyle = grad;
+                    ctx.shadowBlur = 40; ctx.shadowColor = '#818cf8';
+                    ctx.fillRect(lx, this.y + this.height, lWidth, GAME_HEIGHT);
+                    ctx.restore();
+                }
+            }
+            update() {
+                if (this.y < this.targetY) { this.y += 2; return; }
+                if (this.state === 'IDLE') {
+                    this.x += this.speed * this.dir;
+                    if (this.x > GAME_WIDTH - this.width - 20 || this.x < 20) this.dir *= -1;
+                    this.stateTimer++;
+                    if (this.stateTimer > 120) { this.state = 'WINDUP'; this.stateTimer = 0; }
+                } else if (this.state === 'WINDUP') {
+                    this.stateTimer++;
+                    if (this.stateTimer > 60) { this.state = 'FIRING'; this.stateTimer = 0; }
+                } else if (this.state === 'FIRING') {
+                    this.stateTimer++;
+                    const lWidth = GAME_WIDTH / 3;
+                    const lx = this.x + this.width/2 - lWidth/2;
+                    if (player.x + player.width > lx && player.x < lx + lWidth && player.invulnerable <= 0) playerHit();
+                    if (this.stateTimer > 45) { this.state = 'IDLE'; this.stateTimer = 0; }
+                }
+            }
+        }
+
+        class PowerUp {
+            constructor(x, y, type) {
+                this.x = x; this.y = y;
+                this.type = type; // 'SHOTGUN' or 'REPAIR'
+                this.size = 25 * scale;
+                this.vy = 2 * scale;
+                this.color = type === 'SHOTGUN' ? '#fbbf24' : '#10b981';
+                this.pulse = 0;
+            }
+            update() { this.y += this.vy; this.pulse += 0.1; }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.pulse);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15; ctx.shadowColor = this.color;
+                
+                if (this.type === 'SHOTGUN') {
+                    // Triangle for Shotgun
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.size/2);
+                    ctx.lineTo(this.size/2, this.size/2);
+                    ctx.lineTo(-this.size/2, this.size/2);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Hexagon for Repair Kit
+                    const s = this.size/2;
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i * 2 * Math.PI) / 6;
+                        const px = s * Math.cos(angle);
+                        const py = s * Math.sin(angle);
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // Inner detail for Repair Hexagon
+                    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, s/3, 0, Math.PI*2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, vx, vy, color) {
+                this.x = x; this.y = y;
+                this.vx = vx * scale;
+                this.vy = vy * scale;
+                this.width = 4 * scale;
+                this.height = 14 * scale;
+                this.color = color;
+            }
+            update() { this.y += this.vy; this.x += this.vx; }
+            draw() {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                ctx.translate(this.x, this.y);
+                const angle = Math.atan2(this.vy, this.vx) - Math.PI/2;
+                ctx.rotate(angle);
+                ctx.fillRect(-this.width/2, 0, this.width, this.height);
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.size = Math.random() * 4 + 1;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.alpha = 1;
+            }
+            update() { this.x += this.vx; this.y += this.vy; this.alpha -= 0.025; }
+            draw() {
+                ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size); ctx.globalAlpha = 1;
+            }
+        }
+
+        function playerHit() {
+            lives--;
+            player.invulnerable = 2000;
+            createExplosion(player.x + player.width/2, player.y + player.height/2, '#ef4444', 25);
+            updateUI();
+            if (lives <= 0) endGame();
+        }
+
+        function initGame() {
+            score = 0; lives = 3; level = 1; boss = null;
+            bullets = []; invaderBullets = []; particles = []; powerups = [];
+            bossHealthUI.classList.add('hidden');
+            powerupUI.classList.add('hidden');
+            player = new Player();
+            updateUI();
+            createInvaders();
+            gameState = 'PLAYING';
+        }
+
+        function createInvaders() {
+            invaders = [];
+            const rows = 4;
+            const padding = 45 * scale;
+            const cols = Math.floor((GAME_WIDTH - 60) / padding);
+            const offsetX = (GAME_WIDTH - (cols * padding)) / 2;
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const type = (r % 3) + 1;
+                    invaders.push(new Invader(offsetX + c * padding, 100 + r * padding, type));
+                }
+            }
+        }
+
+        function checkCollisions() {
+            bullets.forEach((b, bi) => {
+                invaders.forEach((inv) => {
+                    if (inv.alive && b.x > inv.x && b.x < inv.x + inv.width && b.y > inv.y && b.y < inv.y + inv.height) {
+                        inv.alive = false; bullets.splice(bi, 1);
+                        score += 15; createExplosion(inv.x + inv.width/2, inv.y + inv.height/2, inv.color);
+                        updateUI();
+                    }
+                });
+                if (boss && b.x > boss.x && b.x < boss.x + boss.width && b.y > boss.y && b.y < boss.y + boss.height) {
+                    bullets.splice(bi, 1); boss.hp--;
+                    bossFillUI.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
+                    createExplosion(b.x, b.y, boss.color, 4);
+                    if (boss.hp <= 0) {
+                        createExplosion(boss.x + boss.width/2, boss.y + boss.height/2, boss.color, 60);
+                        if (boss.type === "BEHEMOTH") {
+                            powerups.push(new PowerUp(boss.x + boss.width/2, boss.y + boss.height/2, 'SHOTGUN'));
+                        } else if (boss.type === "LEVIN") {
+                            powerups.push(new PowerUp(boss.x + boss.width/2, boss.y + boss.height/2, 'REPAIR'));
+                        }
+                        score += 1500; boss = null;
+                        bossHealthUI.classList.add('hidden');
+                        level++;
+                        setTimeout(createInvaders, 3000);
+                    }
+                }
+            });
+
+            invaderBullets.forEach((b, bi) => {
+                if (b.x > player.x && b.x < player.x + player.width && b.y > player.y && b.y < player.y + player.height) {
+                    invaderBullets.splice(bi, 1);
+                    if (player.invulnerable <= 0) playerHit();
+                }
+            });
+
+            powerups.forEach((p, pi) => {
+                if (p.x > player.x && p.x < player.x + player.width && p.y > player.y && p.y < player.y + player.height) {
+                    powerups.splice(pi, 1);
+                    if (p.type === 'SHOTGUN') {
+                        player.powerupTimer = 5000;
+                        createExplosion(player.x + player.width/2, player.y, '#fbbf24', 15);
+                    } else if (p.type === 'REPAIR') {
+                        if (lives < 3) {
+                            lives++;
+                            updateUI();
+                        }
+                        createExplosion(player.x + player.width/2, player.y, '#10b981', 15);
+                    }
+                }
+            });
+
+            if (invaders.length > 0 && invaders.every(inv => !inv.alive) && !boss) {
+                invaders = [];
+                if (level % 2 !== 0) {
+                    boss = new BehemothBoss();
+                    bossNameUI.textContent = "Behemoth Class Boss";
+                } else {
+                    boss = new LevinTitanBoss();
+                    bossNameUI.textContent = "Levin Titan Boss";
+                }
+                bossHealthUI.classList.remove('hidden');
+                bossFillUI.style.width = '100%';
+            }
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            finalScoreEl.textContent = `Score: ${score}`;
+            gameOverScreen.classList.remove('hidden');
+            bossHealthUI.classList.add('hidden');
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+            player.update();
+            if (boss) boss.update();
+            bullets.forEach((b, i) => { b.update(); if (b.y < -50 || b.x < -50 || b.x > GAME_WIDTH + 50) bullets.splice(i, 1); });
+            invaderBullets.forEach((b, i) => { b.update(); if (b.y > GAME_HEIGHT + 50 || b.x < -50 || b.x > GAME_WIDTH + 50) invaderBullets.splice(i, 1); });
+            powerups.forEach((p, i) => { p.update(); if (p.y > GAME_HEIGHT) powerups.splice(i, 1); });
+            
+            if (invaders.length > 0) {
+                invaderMoveTimer++;
+                if (invaderMoveTimer >= Math.max(10, 60 - level * 4)) {
+                    invaderMoveTimer = 0;
+                    let edgeHit = false;
+                    invaders.forEach(inv => {
+                        if (!inv.alive) return;
+                        inv.x += 18 * scale * invaderDirection;
+                        if (inv.x > GAME_WIDTH - inv.width - 15 || inv.x < 15) edgeHit = true;
+                    });
+                    if (edgeHit) {
+                        invaderDirection *= -1;
+                        invaders.forEach(inv => {
+                            inv.y += 22 * scale;
+                            if (inv.alive && inv.y + inv.height > player.y) endGame();
+                        });
+                    }
+                    const alive = invaders.filter(inv => inv.alive);
+                    if (alive.length > 0 && Math.random() < 0.1) {
+                        const shooter = alive[Math.floor(Math.random() * alive.length)];
+                        invaderBullets.push(new Bullet(shooter.x + shooter.width/2, shooter.y + shooter.height, 0, 8, shooter.color));
+                    }
+                }
+            }
+            particles.forEach((p, i) => { p.update(); if (p.alpha <= 0) particles.splice(i, 1); });
+            checkCollisions();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+                if (boss) boss.draw();
+                invaders.forEach(inv => { if(inv.alive) inv.draw(); });
+                powerups.forEach(p => p.draw());
+                player.draw();
+                bullets.forEach(b => b.draw());
+                invaderBullets.forEach(b => b.draw());
+                particles.forEach(p => p.draw());
+            }
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keyup', e => keys[e.key] = false);
+
+        const bindTouch = (id, property) => {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); touch[property] = true; });
+            el.addEventListener('touchend', (e) => { e.preventDefault(); touch[property] = false; });
+            el.addEventListener('mousedown', () => touch[property] = true);
+            el.addEventListener('mouseup', () => touch[property] = false);
+        };
+
+        bindTouch('ctrl-left', 'left');
+        bindTouch('ctrl-right', 'right');
+        bindTouch('ctrl-shoot', 'shoot');
+        document.getElementById('start-btn').addEventListener('click', () => { startScreen.classList.add('hidden'); initGame(); });
+        document.getElementById('restart-btn').addEventListener('click', () => { gameOverScreen.classList.add('hidden'); initGame(); });
+        function updateUI() {
+            scoreEl.textContent = score.toString().padStart(4, '0');
+            livesContainer.innerHTML = '';
+            for (let i = 0; i < lives; i++) {
+                const icon = document.createElement('div');
+                icon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="#3b82f6"><path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z"/></svg>`;
+                livesContainer.appendChild(icon);
+            }
+        }
+        function createExplosion(x, y, color, count) { for (let i = 0; i < count; i++) particles.push(new Particle(x, y, color)); }
+        draw();
+        setInterval(update, 1000/60);
+    </script>
+</body>
+</html>
