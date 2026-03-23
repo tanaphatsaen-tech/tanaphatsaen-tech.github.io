@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>City Flyer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #2c3e50;
+            font-family: 'Fredoka One', cursive;
+            touch-action: manipulation;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background-color: #2c3e50;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            color: white;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+        }
+
+        .btn {
+            pointer-events: auto;
+            background: #3498db;
+            background: linear-gradient(to bottom, #5dade2, #2980b9);
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px #1a5276;
+            transition: all 0.1s;
+            margin-top: 20px;
+            text-transform: uppercase;
+        }
+
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px #1a5276;
+        }
+
+        #score-display {
+            position: absolute;
+            top: 40px;
+            width: 100%;
+            text-align: center;
+            font-size: 64px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-display">0</div>
+
+    <div id="ui-layer">
+        <div id="start-screen" class="text-center">
+            <h1 class="text-6xl font-bold mb-4">CITY FLYER</h1>
+            <p class="text-2xl mb-6">Ultra Easy Mode</p>
+            <p class="text-lg opacity-80">Tap or Space to Float</p>
+            <button class="btn" onclick="startGame()">Start Flight</button>
+        </div>
+        <div id="game-over-screen" class="hidden text-center">
+            <h1 class="text-6xl font-bold mb-2">MAYDAY!</h1>
+            <p id="final-score" class="text-3xl mb-1">Score: 0</p>
+            <p id="best-score" class="text-xl opacity-80 mb-6">Best: 0</p>
+            <button class="btn" onclick="startGame()">Try Again</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreTxt = document.getElementById('final-score');
+        const bestScoreTxt = document.getElementById('best-score');
+
+        // ADJUSTED CONSTANTS FOR EASIER GAMEPLAY
+        const GRAVITY = 0.10;      // Lower gravity for slower falling
+        const JUMP = -3.8;         // Adjusted jump for the lower gravity
+        const PIPE_SPEED = 2.0;    
+        const PIPE_GAP = 230;      // Even wider gap
+        const PIPE_SPAWN_RATE = 130; 
+        const BIRD_SIZE = 45;
+
+        // Game State
+        let bird = { x: 50, y: 0, velocity: 0, width: BIRD_SIZE, height: BIRD_SIZE };
+        let pipes = [];
+        let frameCount = 0;
+        let score = 0;
+        let highScore = localStorage.getItem('cityFlyerBest') || 0;
+        let gameState = 'START';
+
+        // City Background Elements
+        let buildings = [];
+        function initCity() {
+            buildings = [];
+            // Back row
+            for (let i = 0; i < 10; i++) {
+                buildings.push({
+                    x: i * 100,
+                    width: 80 + Math.random() * 40,
+                    height: 150 + Math.random() * 200,
+                    color: '#34495e',
+                    speed: 0.3
+                });
+            }
+            // Front row
+            for (let i = 0; i < 8; i++) {
+                buildings.push({
+                    x: i * 150,
+                    width: 100 + Math.random() * 50,
+                    height: 100 + Math.random() * 100,
+                    color: '#2c3e50',
+                    speed: 0.6
+                });
+            }
+        }
+
+        function resize() {
+            canvas.width = Math.min(window.innerWidth, 480);
+            canvas.height = window.innerHeight;
+            bird.x = canvas.width / 4;
+            if (gameState === 'START') bird.y = canvas.height / 2;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        initCity();
+
+        // Assets (Cartoon Character SVG)
+        const birdImg = new Image();
+        birdImg.src = 'data:image/svg+xml;base64,' + btoa(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="#FFD700" stroke="#DAA520" stroke-width="2"/>
+                <circle cx="65" cy="40" r="8" fill="white"/>
+                <circle cx="67" cy="40" r="4" fill="black"/>
+                <path d="M75 50 L90 55 L75 60 Z" fill="#FF8C00"/>
+                <path d="M20 50 Q10 30 35 45 Z" fill="#F0E68C"/>
+                <circle cx="60" cy="55" r="5" fill="#FFB6C1" opacity="0.6"/>
+            </svg>
+        `);
+
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            frameCount = 0;
+            pipes = [];
+            bird.y = canvas.height / 2;
+            bird.velocity = 0;
+            scoreDisplay.innerText = '0';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            scoreDisplay.classList.remove('hidden');
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('cityFlyerBest', highScore);
+            }
+            finalScoreTxt.innerText = `Score: ${score}`;
+            bestScoreTxt.innerText = `Best: ${highScore}`;
+            gameOverScreen.classList.remove('hidden');
+            scoreDisplay.classList.add('hidden');
+        }
+
+        function jump() {
+            if (gameState === 'PLAYING') bird.velocity = JUMP;
+            else if (gameState === 'START') startGame();
+        }
+
+        window.addEventListener('keydown', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp') jump(); });
+        window.addEventListener('mousedown', (e) => { if (e.button === 0) jump(); });
+        window.addEventListener('touchstart', (e) => { jump(); }, { passive: false });
+
+        function createPipe() {
+            const minH = 60;
+            const maxH = canvas.height - PIPE_GAP - minH - 100;
+            const topH = Math.floor(Math.random() * maxH) + minH;
+            pipes.push({ x: canvas.width, topH: topH, width: 75, passed: false });
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            frameCount++;
+            bird.velocity += GRAVITY;
+            bird.y += bird.velocity;
+
+            // Ground/Ceiling collision
+            if (bird.y + bird.height > canvas.height - 40 || bird.y < 0) {
+                gameOver();
+            }
+
+            if (frameCount % PIPE_SPAWN_RATE === 0) createPipe();
+
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                const p = pipes[i];
+                p.x -= PIPE_SPEED;
+
+                // Forgiving hitbox
+                const bx = bird.x + 8;
+                const by = bird.y + 8;
+                const bw = bird.width - 16;
+                const bh = bird.height - 16;
+
+                if (bx + bw > p.x && bx < p.x + p.width) {
+                    if (by < p.topH || by + bh > p.topH + PIPE_GAP) {
+                        gameOver();
+                    }
+                }
+
+                if (!p.passed && bird.x > p.x + p.width) {
+                    score++;
+                    p.passed = true;
+                    scoreDisplay.innerText = score;
+                }
+
+                if (p.x + p.width < 0) pipes.splice(i, 1);
+            }
+        }
+
+        function drawBackground() {
+            // City Sky Gradient (Dusk/Night theme)
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGrad.addColorStop(0, '#1a2a6c');
+            skyGrad.addColorStop(0.5, '#b21f1f');
+            skyGrad.addColorStop(1, '#fdbb2d');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Cityscape
+            buildings.forEach(b => {
+                b.x -= b.speed;
+                if (b.x + b.width < 0) b.x = canvas.width;
+
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x, canvas.height - b.height, b.width, b.height);
+
+                // Little Windows
+                ctx.fillStyle = 'rgba(255, 255, 150, 0.3)';
+                const winRows = Math.floor(b.height / 30);
+                const winCols = Math.floor(b.width / 20);
+                for (let r = 1; r < winRows; r++) {
+                    for (let c = 1; c < winCols; c++) {
+                        if ((r + c + Math.floor(b.x/20)) % 5 === 0) { // Flickering effect
+                           ctx.fillRect(b.x + c * 20, canvas.height - b.height + r * 30, 8, 12);
+                        }
+                    }
+                }
+            });
+
+            // Street/Ground
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, canvas.height - 45, canvas.width, 10);
+            // Road markings
+            ctx.fillStyle = '#f1c40f';
+            for(let m = 0; m < canvas.width; m += 40) {
+                ctx.fillRect(m, canvas.height - 22, 20, 4);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+
+            // Pipes (Industrial Pillar Style)
+            pipes.forEach(p => {
+                ctx.fillStyle = '#7f8c8d';
+                // Top
+                ctx.fillRect(p.x, 0, p.width, p.topH);
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillRect(p.x - 5, p.topH - 20, p.width + 10, 20);
+                
+                // Bottom
+                ctx.fillStyle = '#7f8c8d';
+                ctx.fillRect(p.x, p.topH + PIPE_GAP, p.width, canvas.height);
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillRect(p.x - 5, p.topH + PIPE_GAP, p.width + 10, 20);
+                
+                // Caution Stripes
+                ctx.fillStyle = '#f1c40f';
+                for(let s = 0; s < p.width; s += 20) {
+                    ctx.beginPath();
+                    ctx.moveTo(p.x + s, p.topH - 15); ctx.lineTo(p.x + s + 10, p.topH - 15);
+                    ctx.lineTo(p.x + s + 20, p.topH - 5); ctx.lineTo(p.x + s + 10, p.topH - 5);
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(p.x + s, p.topH + PIPE_GAP + 5); ctx.lineTo(p.x + s + 10, p.topH + PIPE_GAP + 5);
+                    ctx.lineTo(p.x + s + 20, p.topH + PIPE_GAP + 15); ctx.lineTo(p.x + s + 10, p.topH + PIPE_GAP + 15);
+                    ctx.fill();
+                }
+            });
+
+            // Character
+            ctx.save();
+            ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
+            let rot = Math.min(Math.PI / 4, Math.max(-Math.PI / 6, bird.velocity * 0.08));
+            ctx.rotate(rot);
+            ctx.drawImage(birdImg, -bird.width / 2, -bird.height / 2, bird.width, bird.height);
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
