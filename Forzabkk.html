@@ -126,9 +126,8 @@
         
         // Audio Variables
         let audioCtx;
-        let audioAccel, audioDecel;
+        let audioAccel;
         let accelVol = 0;
-        let decelVol = 0;
 
         let sevenElevenLocations = [];
         let nearSevenEleven = false;
@@ -164,13 +163,8 @@
             audioAccel.loop = true;
             audioAccel.volume = 0;
 
-            audioDecel = new Audio("Gunshots Fired from this LBWK R35 GTR 🔥 Epic Exhaust Sound! - CAR COLLECTION (128k).mp3");
-            audioDecel.loop = true;
-            audioDecel.volume = 0;
-
             // Autoplay policies require user interaction, which we have via the button click
             audioAccel.play().catch(e => console.log("Accel play failed:", e));
-            audioDecel.play().catch(e => console.log("Decel play failed:", e));
         }
 
         // Synthesize a classic 7-11 "Ding-Dong" chime
@@ -634,36 +628,27 @@
             state.heading += state.steerAngle * speedSign;
 
             // --- AUDIO MIXING LOGIC ---
-            if (audioAccel && audioDecel) {
+            if (audioAccel) {
                 const currentSpeed = Math.abs(state.speed);
-                const isTurning = (keys.a || keys.d) && currentSpeed > 0.05;
-                const isDecelerating = keys.space || (!keys.w && !keys.s && currentSpeed > 0.05);
                 
-                let targetAccelVol = 0.2; // Base idle
-                let targetDecelVol = 0.0;
+                let targetAccelVol = 0.0; // Base volume when stopped
 
                 // Adjust target volumes based on state
                 if (currentSpeed > 0.05) {
-                    targetAccelVol = (keys.w || keys.s) ? 1.0 : 0.4;
-                }
-                
-                // If we are slowing down or taking a turn (and actively moving)
-                if ((isDecelerating || isTurning) && currentSpeed > 0.05) {
-                    targetDecelVol = 1.0;  // Bring in the GTR Gunshots/Exhaust file
-                    targetAccelVol = 0.3;  // Dip the normal engine tone slightly
+                    targetAccelVol = (keys.w || keys.s) ? 1.0 : 0.5; // Louder when pressing gas, softer when coasting
+                } else if (keys.w || keys.s) {
+                    targetAccelVol = 0.5; // Revving slightly while stationary
                 }
 
                 // Smoothly Lerp Volumes
                 accelVol += (targetAccelVol - accelVol) * 0.1;
-                decelVol += (targetDecelVol - decelVol) * 0.15;
 
                 // Apply logic limits
                 audioAccel.volume = Math.max(0, Math.min(1, accelVol));
-                audioDecel.volume = Math.max(0, Math.min(1, decelVol));
 
                 // Pitch shift the Huracan engine noise to simulate RPMs using the car's current speed
                 let speedPct = currentSpeed / state.maxSpeed;
-                let newRate = 0.8 + (speedPct * 1.2); 
+                let newRate = 0.8 + (speedPct * 1.5); 
                 // Clamp safe HTML5 Audio bounds
                 if(newRate < 0.1) newRate = 0.1; 
                 if(newRate > 16) newRate = 16;
