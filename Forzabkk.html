@@ -162,6 +162,11 @@
             audioAccel = new Audio("Lamborghini Huracan Sound Engine Effect｜V10 Symphony - Mr Xixiwee (128k).mp3");
             audioAccel.loop = true;
             audioAccel.volume = 0;
+            
+            // CRITICAL: Disable pitch preservation so changing speed actually changes the engine pitch (RPMs)
+            audioAccel.preservesPitch = false; 
+            if (audioAccel.mozPreservesPitch !== undefined) audioAccel.mozPreservesPitch = false;
+            if (audioAccel.webkitPreservesPitch !== undefined) audioAccel.webkitPreservesPitch = false;
 
             // Autoplay policies require user interaction, which we have via the button click
             audioAccel.play().catch(e => console.log("Accel play failed:", e));
@@ -631,28 +636,55 @@
             if (audioAccel) {
                 const currentSpeed = Math.abs(state.speed);
                 
-                let targetAccelVol = 0.0; // Base volume when stopped
+                let targetAccelVol = 0.3; // Base idle volume
 
                 // Adjust target volumes based on state
                 if (currentSpeed > 0.05) {
-                    targetAccelVol = (keys.w || keys.s) ? 1.0 : 0.5; // Louder when pressing gas, softer when coasting
+                    targetAccelVol = (keys.w || keys.s) ? 1.0 : 0.6; // Louder when pressing gas, softer when coasting
                 } else if (keys.w || keys.s) {
-                    targetAccelVol = 0.5; // Revving slightly while stationary
+                    targetAccelVol = 0.7; // Revving slightly while stationary
                 }
 
                 // Smoothly Lerp Volumes
                 accelVol += (targetAccelVol - accelVol) * 0.1;
-
-                // Apply logic limits
                 audioAccel.volume = Math.max(0, Math.min(1, accelVol));
 
-                // Pitch shift the Huracan engine noise to simulate RPMs using the car's current speed
+                // Simulated Gear Shifting & RPM calculation
                 let speedPct = currentSpeed / state.maxSpeed;
-                let newRate = 0.8 + (speedPct * 1.5); 
+                let gearTransitions = [0.2, 0.45, 0.75]; // Shift points
+                let gearSpeed = speedPct;
+                
+                if (speedPct < gearTransitions[0]) {
+                    gearSpeed = speedPct / gearTransitions[0];
+                } else if (speedPct < gearTransitions[1]) {
+                    gearSpeed = (speedPct - gearTransitions[0]) / (gearTransitions[1] - gearTransitions[0]);
+                } else if (speedPct < gearTransitions[2]) {
+                    gearSpeed = (speedPct - gearTransitions[1]) / (gearTransitions[2] - gearTransitions[1]);
+                } else {
+                    gearSpeed = (speedPct - gearTransitions[2]) / (1.0 - gearTransitions[2]);
+                }
+
+                // Apply RPM pitch based on the current "gear"
+                let idlePitch = 0.6; // Deep idle tone
+                let redlinePitch = 1.6; // High pitch before shifting
+                
+                // If the user revs while standing still
+                if (currentSpeed <= 0.05 && (keys.w || keys.s)) {
+                    gearSpeed = 0.5; // Simulate a neutral rev
+                }
+                
+                let newRate = idlePitch + (gearSpeed * (redlinePitch - idlePitch));
+                
                 // Clamp safe HTML5 Audio bounds
                 if(newRate < 0.1) newRate = 0.1; 
                 if(newRate > 16) newRate = 16;
-                audioAccel.playbackRate = newRate; 
+                
+                // Lerp the pitch quickly to smooth it out, but allow fast drops for gear shifts
+                if (!audioAccel.playbackRate || isNaN(audioAccel.playbackRate)) {
+                    audioAccel.playbackRate = newRate;
+                } else {
+                    audioAccel.playbackRate += (newRate - audioAccel.playbackRate) * 0.3;
+                }
             }
             // ---------------------------
 
